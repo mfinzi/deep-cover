@@ -10,10 +10,10 @@ torch.hub.list('pytorch/fairseq')
 import fairseq
 from fairseq.search import Sampling
 
-def text2decimal(text):
-    compressed_text_data = text.encode('utf-8')#zlib.compress()
-    message_decimal = Decimal('0.'+base(list(compressed_text_data)[::-1], 256, 10, string=True)[::-1])
-    return message_decimal
+# def text2decimal(text):
+#     compressed_text_data = text.encode('utf-8')#zlib.compress()
+#     message_decimal = Decimal('0.'+base(list(compressed_text_data)[::-1], 256, 10, string=True)[::-1])
+#     return message_decimal
 
 def decimal2bits(decimal,bits_encoded):
     #'0.d0d1...' -> (...,d1,d0) -> [...,b1,b0] -> [b0,b1,...,b(bits_encoded-1)]
