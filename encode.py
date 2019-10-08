@@ -6,7 +6,8 @@ import zlib
 import math
 import copy
 from baseconvert import base
-#torch.hub.list('pytorch/fairseq')
+torch.hub.list('pytorch/fairseq')
+import fairseq
 from fairseq.search import Sampling
 
 def text2decimal(text):
@@ -14,21 +15,40 @@ def text2decimal(text):
     message_decimal = Decimal('0.'+base(list(compressed_text_data)[::-1], 256, 10, string=True)[::-1])
     return message_decimal
 
-def decimal2bits(decimal,bits_encoded=-1):
-    base10digits = decimal.as_tuple().digits[::-1]
-    base2bits = base(base10digits,10,2)[::-1][:bits_encoded]
-    return base2bits
+def decimal2bits(decimal,bits_encoded):
+    #'0.d0d1...' -> (...,d1,d0) -> [...,b1,b0] -> [b0,b1,...,b(bits_encoded-1)]
+    # decimals_encoded = math.ceil(bits_encoded*np.log(2)/np.log(10)+1)
+    # base10digits = decimal.as_tuple().digits[:decimals_encoded]#[::-1]
+    # base2bits = base(base10digits,10,2)#[::-1]
+    # return base2bits[:bits_encoded]#base2bits
+    output_bits = []
+    while len(output_bits)<bits_encoded:
+        if decimal > 0.5:
+            output_bits.append(1)
+            decimal -= Decimal(0.5)
+        else:
+            output_bits.append(0)
+        decimal *=2
+    return output_bits
 
 def bits2text(bits):
-    base256bytes = bytes(bytes(base(bits[::-1],2,256))[::-1])
+    # [b0,b1,...] -> [..., b2,b1,b0] -> [..., h2,h1,h0] -> [h0,h1,..]
+    base256bytes = bytes(base(bits[::-1],2,256)[::-1])
     return base256bytes
 
 def text2bits(text):
     encoded_data = text.encode('utf-8')
+    #[h0,h1,..] -> [hn,hn-1,...h0] -> [..., b2,b1,b0] -> [b0,b1,...]
     return base(list(encoded_data)[::-1],256,2)[::-1]
 
 def bits2decimal(bits):
-    return Decimal('0.'+base(bits[::-1],2,10,string=True)[::-1])
+    #[b0,b1,...] -> [...,b1,b0] -> [...,d1,d0] -> [d0,d1,...] -> '0.d0d1d2...'
+    #return Decimal('0.'+base(bits,2,10,string=True))
+    #return Decimal('0.'+str(bits2int(bits))[::-1])
+    val = Decimal(0)
+    for i,bit in enumerate(bits):
+        val += bit*Decimal(2**(-i-1))
+    return val
 
 def decimals2text(decimals,all_bits_encoded):
     all_bits = []
@@ -36,18 +56,6 @@ def decimals2text(decimals,all_bits_encoded):
         all_bits.extend(decimal2bits(decimal,bits_encoded))
     return bits2text(all_bits)
 
-# e.g. [0, 1, 1, 1] looks like 1110=14
-def bits2int(bits):
-    res = 0
-    for i, bit in enumerate(bits):
-        res += bit*(2**i)
-    return res
-
-def int2bits(inp, num_bits):
-    if num_bits == 0:
-        return []
-    strlist = ('{0:0%db}'%num_bits).format(inp)
-    return [int(strval) for strval in reversed(strlist)]
 
 # def decimal2text(decimal,bits_encoded=-1):
 #     base10digits = decimal.as_tuple().digits[::-1]
@@ -219,8 +227,10 @@ def encode_short_text(reference_text,secret_bits,models,**kwargs):
     en2other, other2en = models
     n = len(en2other.encode(reference_text))
     otherlang_covertext = en2other.translate(reference_text,min_len=4*n//5)
-
-    en_with_hidden,bits_encoded = generate_hidden(other2en,message=bits2decimal(secret_bits),tokens=other2en.encode(otherlang_covertext),
+    print(secret_bits)
+    hidden_decimal = bits2decimal(secret_bits)
+    print(hidden_decimal)
+    en_with_hidden,bits_encoded = generate_hidden(other2en,message=hidden_decimal,tokens=other2en.encode(otherlang_covertext),
                                     beam=1,sampling=True,min_len=4.5*n//5,**kwargs)
     payload_text = other2en.decode(en_with_hidden[0]['tokens'])
     return payload_text,bits_encoded
@@ -232,7 +242,11 @@ def decode_short_text(reference_text,payload_text,models,**kwargs):
     otherlang_covertext = en2other.translate(reference_text,min_len=4*n//5)
     hidden_decimal,bits_decoded = generate_hidden(other2en,message = en2other.encode(payload_text),decode=True, beam=1, sampling=True,
                                 tokens=other2en.encode(otherlang_covertext), min_len=4.5*n//5,**kwargs)
-    return decimal2bits(hidden_decimal,bits_decoded)#decimal2text(hidden_decimal)
+    print(hidden_decimal)
+    print(bits_decoded)
+    decoded_secret_bits = decimal2bits(hidden_decimal,bits_decoded)
+    print(decoded_secret_bits)
+    return decoded_secret_bits#decimal2text(hidden_decimal)
 
 
 def encode_long_text(long_reference_text,secret_message,models,**kwargs):
@@ -242,13 +256,13 @@ def encode_long_text(long_reference_text,secret_message,models,**kwargs):
     for paragraph in paragraphs:
         new_payload, new_bits_encoded = encode_short_text(paragraph,secret_message_bits[all_numbits_encoded:],models,**kwargs)
         all_payload_text.append(new_payload)
-        print(secret_message_bits[all_numbits_encoded:all_numbits_encoded+new_bits_encoded])
+        #print(secret_message_bits[all_numbits_encoded:all_numbits_encoded+new_bits_encoded])
         all_numbits_encoded+=new_bits_encoded
         print(f"{new_bits_encoded} new bits encoded")
         # use numbits encoded to shift the secret message
-    print("all of the bits",all_numbits_encoded)
-    print("secret bits",secret_message_bits)
-    return '\n'.join(all_payload_text)
+    #print("all of the bits",all_numbits_encoded)
+    #print("secret bits",secret_message_bits)
+    return '\n'.join(all_payload_text), all_numbits_encoded
 
 def decode_long_text(long_reference_text,long_payload_text,models,**kwargs):
     reference_paragraphs = long_reference_text.split('\n')
@@ -257,7 +271,7 @@ def decode_long_text(long_reference_text,long_payload_text,models,**kwargs):
     for ref_par,payload_par in zip(reference_paragraphs,payload_paragraphs):
         new_bits_decoded = decode_short_text(ref_par,payload_par,models,**kwargs)
         decoded_bits.extend(new_bits_decoded)
-        print(new_bits_decoded)
+        #print(new_bits_decoded)
         print(f"{len(new_bits_decoded)} new bits decoded")
-    print(decoded_bits)
+    #print(decoded_bits)
     return bits2text(decoded_bits)
