@@ -56,6 +56,24 @@ def decimals2text(decimals,all_bits_encoded):
         all_bits.extend(decimal2bits(decimal,bits_encoded))
     return bits2text(all_bits)
 
+def colorize(text,colour):
+    if colour == "black":
+        return "\033[1;30m" + str(text) + "\033[1;m"
+    if colour == "red":
+        return "\033[1;31m" + str(text) + "\033[1;m"
+    if colour == "green":
+        return "\033[1;32m" + str(text) + "\033[1;m"
+    if colour == "yellow":
+        return "\033[1;33m" + str(text) + "\033[1;m"
+    if colour == "blue":
+        return "\033[1;34m" + str(text) + "\033[1;m"
+    if colour == "magenta":
+        return "\033[1;35m" + str(text) + "\033[1;m"
+    if colour == "cyan":
+        return "\033[1;36m" + str(text) + "\033[1;m"
+    if colour == "gray":
+        return "\033[1;37m" + str(text) + "\033[1;m"
+    return str(text)
 
 # def decimal2text(decimal,bits_encoded=-1):
 #     base10digits = decimal.as_tuple().digits[::-1]
@@ -233,7 +251,7 @@ def encode_short_text(reference_text,secret_bits,models,**kwargs):
     en_with_hidden,bits_encoded = generate_hidden(other2en,message=hidden_decimal,tokens=other2en.encode(otherlang_covertext),
                                     beam=1,sampling=True,min_len=4.5*n//5,**kwargs)
     payload_text = other2en.decode(en_with_hidden[0]['tokens'])
-    return payload_text,bits_encoded
+    return payload_text,bits_encoded,otherlang_covertext
 
 def decode_short_text(reference_text,payload_text,models,**kwargs):
     getcontext().prec = 500
@@ -251,18 +269,19 @@ def decode_short_text(reference_text,payload_text,models,**kwargs):
 
 def encode_long_text(long_reference_text,secret_message,models,**kwargs):
     paragraphs = long_reference_text.split('\n')
-    all_payload_text,all_numbits_encoded = [],0
+    all_payload_text,all_numbits_encoded,otherlang_text = [],0,''
     secret_message_bits  = text2bits(secret_message)
     for paragraph in paragraphs:
-        new_payload, new_bits_encoded = encode_short_text(paragraph,secret_message_bits[all_numbits_encoded:],models,**kwargs)
+        new_payload, new_bits_encoded, new_otherlang = encode_short_text(paragraph,secret_message_bits[all_numbits_encoded:],models,**kwargs)
         all_payload_text.append(new_payload)
+        otherlang_text += new_otherlang
         #print(secret_message_bits[all_numbits_encoded:all_numbits_encoded+new_bits_encoded])
         all_numbits_encoded+=new_bits_encoded
         print(f"{new_bits_encoded} new bits encoded")
         # use numbits encoded to shift the secret message
     #print("all of the bits",all_numbits_encoded)
     #print("secret bits",secret_message_bits)
-    return '\n'.join(all_payload_text), all_numbits_encoded
+    return ''.join(all_payload_text), all_numbits_encoded, otherlang_text
 
 def decode_long_text(long_reference_text,long_payload_text,models,**kwargs):
     reference_paragraphs = long_reference_text.split('\n')

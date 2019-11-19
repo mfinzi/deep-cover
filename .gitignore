@@ -2,7 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+stegenv/
 # C extensions
 *.so
 
@@ -102,3 +102,8 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml
